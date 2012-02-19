@@ -1,0 +1,11 @@
+{
+  "name": "parkster",
+  "version": "0.0.1",
+  "private": true,
+  "dependencies": {
+    "zappa": ">= 0.3.3",
+    "coffee-script": ">= 1.2.0",
+    "stylus": ">= 0.23.0",
+    "mongoose": ">= 2.5.7"
+  }
+}
