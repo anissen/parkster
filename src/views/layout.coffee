@@ -39,8 +39,4 @@ html ->
         p 'Placeholder'
         @body
 
-      div ->
-        p id: 'user-count'
-
-    # Javascript (placed at the end of the document so the pages load faster)
-    # <script src="./hero_files/jquery.js"></script> 
+    #script src: 'http://twitter.github.com/bootstrap/assets/js/bootstrap-tab.js'

@@ -1,12 +1,11 @@
+
 port = Number(process.env.PORT or 3000)
 require('zappa') port, ->
-  # MongoDB Setup
   mongoose = require 'mongoose'
   mongoose.connect 'mongodb://localhost/test'
 
   # Declare schema for model
   Schema = mongoose.Schema
-  
   ParkingSchema = new Schema
     lat     : Number
     lng     : Number
@@ -46,7 +45,7 @@ require('zappa') port, ->
   @helper emitMarkers: (err, docs) ->
     @emit markers: {markers: docs}
 
-  @saveParking = (lat, lng, user = 'Anonymous', comment = 'No comment') ->
+  @helper saveParking: (lat, lng, user = 'Anonymous', comment = 'No comment') ->
     parkingModel          = new ParkingModel
     parkingModel.user     = user
     parkingModel.lat      = lat
@@ -54,7 +53,7 @@ require('zappa') port, ->
     parkingModel.date     = new Date()
     parkingModel.comment  = "No comment"
 
-    parkingModel.save ((err) => 
+    parkingModel.save ((err) -> 
       if !err
         console.log 'Parking registered successfully'
       else 
@@ -70,7 +69,7 @@ require('zappa') port, ->
     @getParkings lat, lng
 
   @on marker: ->
-    saveParking @data.lat, @data.lng
+    @saveParking @data.lat, @data.lng
     @broadcast marker: {lat: @data.lat, lng: @data.lng}
 
 
@@ -79,12 +78,12 @@ require('zappa') port, ->
 
   @client '/index.js': ->
     mapMarkers = []
+    mapType = 'menu-add-parking'
 
     @connect()
 
     @on markers: ->
       if @data.markers
-        clearMarkers()
         for mark in @data.markers
           addMarker mark.lat, mark.lng
 
@@ -104,6 +103,9 @@ require('zappa') port, ->
         marker.setMap null
       mapMarkers = []
 
+    setMapType = (type) =>
+      mapType = type
+
     initializeMaps = () =>
       mapOptions = 
         center: new google.maps.LatLng 55.716667, 12.566667 # Copenhagen
@@ -111,16 +113,23 @@ require('zappa') port, ->
         mapTypeId: google.maps.MapTypeId.ROADMAP
       window.parkmap = map = new google.maps.Map document.getElementById('map_canvas'), mapOptions
 
-      google.maps.event.addListener map, 'dblclick', (event) => 
-        lat = event.latLng.lat()
-        lng = event.latLng.lng()
-        addMarker lat, lng
-        @emit marker: {lat: lat, lng: lng}
-
       google.maps.event.addListener map, 'click', (event) => 
         lat = event.latLng.lat()
         lng = event.latLng.lng()
-        @emit search: {lat: lat, lng: lng}
+        switch mapType
+          when 'menu-add-parking'
+            addMarker lat, lng
+            @emit marker: {lat: lat, lng: lng}          
+          when 'menu-search-parking'
+            clearMarkers()
+            @emit search: {lat: lat, lng: lng}
 
     $ =>
-      initializeMaps()      
+      initializeMaps()
+      $('a[data-toggle="tab"]').bind('click', ((event) ->
+        tab = $(this)
+        event.preventDefault()
+        $('a[data-toggle="tab"]').closest('li').removeClass 'active'
+        tab.closest('li').addClass 'active'
+        setMapType tab.attr('id')
+      ))
