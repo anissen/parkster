@@ -2,11 +2,11 @@ port = Number(process.env.PORT or 3000)
 require('zappa') port, ->
   # MongoDB Setup
   mongoose = require 'mongoose'
-  mongoose.connect 'mongodb://localhost/test' #'mongodb://localhost/test'
+  mongoose.connect 'mongodb://localhost/test'
 
   # Declare schema for model
   Schema = mongoose.Schema
-
+  
   ParkingSchema = new Schema
     lat     : Number
     lng     : Number
@@ -28,28 +28,25 @@ require('zappa') port, ->
     @render 'index'
 
   @post '/parking/:id/:lat/:lng/': ->
-    saveParking @params.lat, @params.lng, @params.id
+    @saveParking @params.lat, @params.lng, @params.id
 
   @get '/parking/:lat/:lng/': ->
     lat = @params.lat
     lng = @params.lng
-    getParkings lat, lng
+    @getParkings lat, lng
 
-  getParkings = (lat, lng, searchRadius = 0.2) ->
+  @helper getParkings: (lat, lng, searchRadius = 0.3) ->
     ParkingModel
       .where('lat').gte(lat - searchRadius)
       .where('lat').lte(lat + searchRadius)
       .where('lng').gte(lng - searchRadius)
       .where('lng').lte(lng + searchRadius)
-      #.select('name', 'age', 'tags')
-      .run(getParkingsCallback)
+      .run @emitMarkers
 
-  getParkingsCallback = (err, docs) ->
-    #console.log docs
-    #response.send docs
+  @helper emitMarkers: (err, docs) ->
     @emit markers: {markers: docs}
 
-  saveParking = (lat, lng, user = 'Anonymous', comment = 'No comment') ->
+  @saveParking = (lat, lng, user = 'Anonymous', comment = 'No comment') ->
     parkingModel          = new ParkingModel
     parkingModel.user     = user
     parkingModel.lat      = lat
@@ -65,28 +62,20 @@ require('zappa') port, ->
     )
 
   @on connection: ->
-    ParkingModel.find {}, (err, docs) =>
-      @emit markers: {markers: docs}
+    ParkingModel.find {}, @emitMarkers
 
   @on search: ->
-    #getParkings @data.lat, @data.lng
     lat = @data.lat
     lng = @data.lng
-    searchRadius = 0.3
-    ParkingModel
-      .where('lat').gte(lat - searchRadius)
-      .where('lat').lte(lat + searchRadius)
-      .where('lng').gte(lng - searchRadius)
-      .where('lng').lte(lng + searchRadius)
-      .run((err, docs) -> 
-        console.log "Status: " + err
-        console.log docs
-        @emit markers: {markers: docs}
-      )
+    @getParkings lat, lng
 
   @on marker: ->
     saveParking @data.lat, @data.lng
     @broadcast marker: {lat: @data.lat, lng: @data.lng}
+
+
+
+  # -------------- CLIENT -----------------
 
   @client '/index.js': ->
     mapMarkers = []
@@ -94,7 +83,6 @@ require('zappa') port, ->
     @connect()
 
     @on markers: ->
-      console.log "Markers " + @data.markers
       if @data.markers
         clearMarkers()
         for mark in @data.markers
@@ -112,9 +100,7 @@ require('zappa') port, ->
       mapMarkers.push marker
 
     clearMarkers = () =>
-      console.log "Clear markers"
       for marker in mapMarkers
-        console.log "Clear marker " + marker
         marker.setMap null
       mapMarkers = []
 
