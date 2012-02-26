@@ -2,7 +2,12 @@
 port = Number(process.env.PORT or 3000)
 require('zappa') port, ->
   mongoose = require 'mongoose'
-  mongoose.connect 'mongodb://localhost/test'
+  databaseConnectionString = process.env.PARKSTER_MONGODB_CONNECTION_STRING or 'mongodb://localhost/test'
+  mongoose.connect databaseConnectionString
+
+  console.log 'Database string: ' + databaseConnectionString
+
+  #@set 'log level', 1 # disable socket.io info type logs
 
   # Declare schema for model
   Schema = mongoose.Schema
@@ -26,20 +31,27 @@ require('zappa') port, ->
   @get '/': ->
     @render 'index'
 
-  @post '/parking/:id/:lat/:lng/': ->
-    @saveParking @params.lat, @params.lng, @params.id
+  @post '/parking/:lat/:lng/': ->
+    @saveParking @params.lat, @params.lng
 
   @get '/parking/:lat/:lng/': ->
     lat = @params.lat
     lng = @params.lng
     @getParkings lat, lng
 
-  @helper getParkings: (lat, lng, searchRadius = 0.3) ->
+  @get '/parking/:lat/:lng/:latRadius/:lngRadius/': ->
+    lat = @params.lat
+    lng = @params.lng
+    latRadius = @params.latRadius
+    lngRadius = @params.lngRadius
+    @getParkings lat, lng, latRadius, lngRadius
+
+  @helper getParkings: (lat, lng, latSearchRadius = 0.2, lngSearchRadius = 0.4) ->
     ParkingModel
-      .where('lat').gte(lat - searchRadius)
-      .where('lat').lte(lat + searchRadius)
-      .where('lng').gte(lng - searchRadius)
-      .where('lng').lte(lng + searchRadius)
+      .where('lat').gte(lat - latSearchRadius)
+      .where('lat').lte(lat + latSearchRadius)
+      .where('lng').gte(lng - lngSearchRadius)
+      .where('lng').lte(lng + lngSearchRadius)
       .run @emitMarkers
 
   @helper emitMarkers: (err, docs) ->
@@ -79,6 +91,8 @@ require('zappa') port, ->
   @client '/index.js': ->
     mapMarkers = []
     mapType = 'menu-add-parking'
+    searchRectangle = null
+    infoWindow = null
 
     @connect()
 
@@ -96,6 +110,9 @@ require('zappa') port, ->
         position: new google.maps.LatLng lat, lng
         map: window.parkmap
         animation: google.maps.Animation.DROP
+        title: 'Parking'
+        content: 'Parking at ' + lat + ', ' + lng
+      google.maps.event.addListener marker, 'click', onMarkerClick
       mapMarkers.push marker
 
     clearMarkers = () =>
@@ -106,23 +123,58 @@ require('zappa') port, ->
     setMapType = (type) =>
       mapType = type
 
+    onMarkerClick = () ->
+      marker = this
+      infoWindow.setContent '<h3>Parking</h3>' + marker.content
+
+      infoWindow.open window.parkmap, marker
+
+    addMarkerTool = (lat, lng) =>
+      searchRectangle.map = null
+      addMarker lat, lng
+      @emit marker: {lat: lat, lng: lng}  
+
+    searchTool = (lat, lng) =>
+      clearMarkers()
+      latSearchRadius = 0.2
+      lngSearchRadius = 0.4
+      
+      # Get the current bounds, which reflect the bounds before the zoom.
+      rectOptions =
+        strokeColor: "#FF0000"
+        strokeOpacity: 0.8
+        strokeWeight: 2
+        fillColor: "#FF0000"
+        fillOpacity: 0.35
+        map: window.parkmap
+        bounds: new google.maps.LatLngBounds(
+          new google.maps.LatLng(lat - latSearchRadius, lng - lngSearchRadius), 
+          new google.maps.LatLng(lat + latSearchRadius, lng + lngSearchRadius))
+      
+      searchRectangle.setOptions rectOptions
+
+      @emit search: {lat: lat, lng: lng}
+
     initializeMaps = () =>
       mapOptions = 
-        center: new google.maps.LatLng 55.716667, 12.566667 # Copenhagen
-        zoom: 6
+        center: new google.maps.LatLng 56.5, 11.5
+        zoom: 7
         mapTypeId: google.maps.MapTypeId.ROADMAP
       window.parkmap = map = new google.maps.Map document.getElementById('map_canvas'), mapOptions
+
+      searchRectangle = new google.maps.Rectangle()
+
+      infoWindow = new google.maps.InfoWindow()
 
       google.maps.event.addListener map, 'click', (event) => 
         lat = event.latLng.lat()
         lng = event.latLng.lng()
+        infoWindow.close()
         switch mapType
           when 'menu-add-parking'
-            addMarker lat, lng
-            @emit marker: {lat: lat, lng: lng}          
+            addMarkerTool lat, lng        
           when 'menu-search-parking'
-            clearMarkers()
-            @emit search: {lat: lat, lng: lng}
+            searchTool lat, lng
 
     $ =>
       initializeMaps()
